@@ -3,6 +3,7 @@ import rclpy
 from rclpy.node import Node
 from custom_interfaces.srv import Llama
 import subprocess
+import os
 
 class ServiceNode(Node):
 
@@ -31,7 +32,17 @@ class ServiceNode(Node):
         
         # Run a program using subprocess
         try:
-            llamacpp_cmd = f"docker exec --workdir /opt/llama.cpp/bin llama_cont ./main -m /opt/llama.cpp/models/Llammas_q4_K_M.gguf --prompt \"{self.current_chat}\" --n-predict 256 --ctx-size 300 --batch-size 192 --n-gpu-layers 999 -e"
+            # Write prompt to file
+            with open("prompt.txt", "w") as file:
+                file.write(self.current_chat)
+
+            # copy the file to docker container
+            dockercp_cmd = f"docker cp prompt.txt llama_cont:/opt/llama.cpp/prompt.txt"
+            # Delete the temporary prompt file
+            os.remove("prompt.txt")
+            subprocess.run(dockercp_cmd, text=True, shell=True)
+
+            llamacpp_cmd = f"docker exec --workdir /opt/llama.cpp/bin llama_cont ./main -m /opt/llama.cpp/models/Llammas_q4_K_M.gguf -f /opt/llama.cpp/prompt.txt --n-predict 256 --ctx-size 300 --batch-size 192 --n-gpu-layers 999 -e"
             output = subprocess.run(llamacpp_cmd, capture_output=True, text=True, shell=True)
 
             output_string = output.stdout.strip() # Get the output from llama_cpp
