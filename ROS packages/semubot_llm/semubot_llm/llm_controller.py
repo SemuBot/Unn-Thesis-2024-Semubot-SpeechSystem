@@ -29,8 +29,7 @@ class ServiceNode(Node):
 
         # Add the user input into the chat correctly
         self.current_chat += "\n<user>\n" + processed_string + "\n<assistant>\n"
-        
-        # Run a program using subprocess
+
         try:
             # Write prompt to file
             with open("prompt.txt", "w") as file:
@@ -38,29 +37,35 @@ class ServiceNode(Node):
 
             # copy the file to docker container
             dockercp_cmd = f"docker cp prompt.txt llama_cont:/opt/llama.cpp/prompt.txt"
+            subprocess.run(dockercp_cmd, text=True, shell=True)
             # Delete the temporary prompt file
             os.remove("prompt.txt")
-            subprocess.run(dockercp_cmd, text=True, shell=True)
 
-            llamacpp_cmd = f"docker exec --workdir /opt/llama.cpp/bin llama_cont ./main -m /opt/llama.cpp/models/Llammas_q4_K_M.gguf -f /opt/llama.cpp/prompt.txt --n-predict 256 --ctx-size 300 --batch-size 192 --n-gpu-layers 999 -e"
-            output = subprocess.run(llamacpp_cmd, capture_output=True, text=True, shell=True)
+            # Generate outputs until output meets length requirement > 2 aka no empty ouputs
+            while True:
+                # run llama.cpp with LLammas model
+                llamacpp_cmd = f"docker exec --workdir /opt/llama.cpp/bin llama_cont ./main -m /opt/llama.cpp/models/Llammas_q4_K_M.gguf -f /opt/llama.cpp/prompt.txt --n-predict 256 --ctx-size 300 --batch-size 192 --n-gpu-layers 999 -e"
+                output = subprocess.run(llamacpp_cmd, capture_output=True, text=True, shell=True)
 
-            output_string = output.stdout.strip() # Get the output from llama_cpp
-            lines = output_string.splitlines() # split lines from llama.cpp output
+                output_string = output.stdout.strip() # Get the output from llama_cpp
 
-            self.current_chat = output_string
-            curr_line_idx = len(lines)-1
-            response.output_string=""
+                lines = output_string.splitlines() # split lines from llama.cpp output
+                
+                curr_line_idx = len(lines)-1
+                response.output_string=""
 
-            # find only the relevant lines, starting from the last <assistant> line
-            for i,line in enumerate(lines):
-                if "<assistant>" in lines[curr_line_idx]:
-                    response.output_string = "\n".join(lines[curr_line_idx+1:])
-                    break
-                else:
-                    curr_line_idx-=1
-            self.get_logger().info(f"Sent: {response.output_string}")
-            return response
+                # find only the relevant lines, starting from the last <assistant> line
+                for i,line in enumerate(lines):
+                    if "<assistant>" in lines[curr_line_idx]:
+                        response.output_string = "\n".join(lines[curr_line_idx+1:])
+                        break
+                    else:
+                        curr_line_idx-=1
+                self.get_logger().info(f"Sent: {response.output_string}")
+                if len(response.output_string)>3:
+                    
+                    self.current_chat = output.stdout.strip()
+                    return response
         except subprocess.CalledProcessError as e:
             self.get_logger().error(f"Error running subprocess: {e}")
             response.output_string = ""  # Clear the response string
