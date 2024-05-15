@@ -9,15 +9,10 @@ import time
 import select
 import numpy as np
 
+kiirkirj_command = "docker exec -i kiirkirjutaja python main.py -"
 
 # Change these variables if neccessary
 conda_env = "transformer-tts"
-#kiirkirj_command = "rec -t raw -r 16k -e signed -b 16 -c 1 - | play -t raw -e signed-integer -b 16 -c 1 -r 16k -"
-#kiirkirj_command = "play -t raw -e signed-integer -b 16 -c 1 -r 16k -"
-kiirkirj_command = "docker exec -i kiirkirjutaja python main.py -"
-#kiirkirj_command = "rec -t raw -r 16k -e signed -b 16 -c 1 - | docker exec -i kiirkirjutaja python main.py -"
-
-
 
 # For synthesis (assuming conda env is set up)
 python_path = "/home/semubot/anaconda3/envs/transformer-tts/bin/python"
@@ -54,8 +49,6 @@ class SemubotSpeechNode(Node):
         self.kk_monitor_thread = Thread(target=self.monitor_program_output)
         self.kk_monitor_thread.start()
         self.get_logger().info("Started a non-blocking thread")
-        
-        #self.monitor_program_output()
 
     def audio_stream(self, msg):
         
@@ -86,32 +79,37 @@ class SemubotSpeechNode(Node):
                         self.started_rec = True
                         self.get_logger().info('started recognition')
                     
-                    #msg = String()
-                    #msg.data = self.recognised_speech_buffer.decode("utf-8").splitlines()[-1]
-                    #self.debug_publisher.publish(msg)
             if self.started_rec:
                 if time.time()-last_input_time>4:
                     self.get_logger().info('Detected pause, sending service call to llama_node')
                     
                     self.call_LLM_service()
-                    #output = self.kiirkirjutaja_process.stdout.read(2000)
+                    output = self.kiirkirjutaja_process.stdout.read(2000)
                     self.get_logger().info('Restarted speech recognition')
                     self.started_rec = False
                     self.recognised_speech_buffer = bytes()
                     last_input_time = time.time()
 
     def call_LLM_service(self):
+        # Create service request 
         request = Llama.Request()
+        # Decode the bytes of recognized speech
         request.input_string = self.recognised_speech_buffer.decode("utf-8")
         self.get_logger().info('Whole recognized text was: ' + request.input_string)
+        
+        # Check if service is available
         while not self.LLama_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Service not available, waiting...')
+        # Send the request to generate a response to human input
         future = self.LLama_client.call_async(request)
+        # Wait until get an answer but up to 3 minutes max
         rclpy.spin_until_future_complete(self, future, timeout_sec=180)
+        # Get the LLM's response as string
         string_to_synthesize = future.result().output_string
         if future.result() is not None:
             self.get_logger().info('Llama service call successful, string to synthesize:' + string_to_synthesize)
             
+            # Call the synthesizing funtion with a voice
             self.Synthesize(string_to_synthesize, voice="mari")
             
         else:
@@ -119,8 +117,8 @@ class SemubotSpeechNode(Node):
 
 
 
-    # 
-    def Synthesize(self, string_to_synthesize, voice):
+    # Synthesize a string to wav file and (temporarely) play it in the speakers
+    def Synthesize(self, string_to_synthesize, voice="mari"):
         # Write string to file
         with open(f"{tts_file_path}.txt", "w") as file:
             file.write(string_to_synthesize)
@@ -130,7 +128,7 @@ class SemubotSpeechNode(Node):
         program_cmd = f"{python_path} synthesizer.py --speaker {voice} --config config.yaml {tts_file_path}.txt {tts_file_path}.wav"
         full_cmd = f"{activate_cmd}{program_cmd}"
         
-        # Run the synthesis command
+        # Run the Text-to-Speech synthesis command
         self.tts = subprocess.run(full_cmd, shell=True, universal_newlines=True)
         
         self.get_logger().info("Finished synthesizing")
