@@ -17,3 +17,6 @@ Repol on järgmised osad:
 - **Testing results** kataloog sisaldab testimise andmeid keelemudelite, riistvara ja kõnesünteesi kiiruste ning kvaliteedi kohta.
 - **ROS packages**  kataloog sisaldab süsteemi kasutamiseks vajalikke ROS pakette.
 - **Setup_guide.md** fail sisaldab etappide kaupa juhendit süsteemi üles seadmiseks kahe arvuti peal ja selle süsteemi kasutamiseks.
+
+## Video proof of concept
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/WHH-v2EMa-0/0.jpg)](https://www.youtube.com/watch?v=WHH-v2EMa-0)
